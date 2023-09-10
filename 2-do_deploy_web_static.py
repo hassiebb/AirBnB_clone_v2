@@ -1,66 +1,49 @@
 #!/usr/bin/python3
-"""
-Fabric script that distributes an archive to your web servers
-"""
+# Fabfile to distribute an archive to a web server.
+import os.path
+from fabric.api import env
+from fabric.api import put
+from fabric.api import run
 
-from fabric.api import env, put, run, local
-from os.path import exists, isdir
-from datetime import datetime
+env.hosts = ["54.172.86.31	", "54.236.44.220"]
 
-env.hosts = ['54.172.86.31', '54.236.44.220']
-env.user = 'ubuntu'
-
-def do_pack():
-    """Generates a tgz archive"""
-    try:
-        date = datetime.now().strftime("%Y%m%d%H%M%S")
-        if not isdir("versions"):
-            local("mkdir versions")
-        file_name = "versions/web_static_{}.tgz".format(date)
-        local("tar -cvzf {} web_static".format(file_name))
-        return file_name
-    except Exception as e:
-        return None
 
 def do_deploy(archive_path):
-    """Deploys an archive to your web servers"""
-    if not exists(archive_path):
+    """Distributes an archive to a web server.
+
+    Args:
+        archive_path (str): The path of the archive to distribute.
+    Returns:
+        If the file doesn't exist at archive_path or an error occurs - False.
+        Otherwise - True.
+    """
+    if os.path.isfile(archive_path) is False:
         return False
-    try:
-        archive_name = archive_path.split('/')[-1]
-        archive_name_no_ext = archive_name.split('.')[0]
-        release_path = "/data/web_static/releases/{}".format(archive_name_no_ext)
+    file = archive_path.split("/")[-1]
+    name = file.split(".")[0]
 
-        # Upload the archive to /tmp/ directory on the server
-        put(archive_path, "/tmp/")
-
-        # Create the release directory
-        run("mkdir -p {}".format(release_path))
-
-        # Uncompress the archive
-        run("tar -xzf /tmp/{} -C {}".format(archive_name, release_path))
-
-        # Delete the archive from the server
-        run("rm /tmp/{}".format(archive_name))
-
-        # Move the contents of the release directory to the web_static directory
-        run("mv {}/web_static/* {}".format(release_path, release_path))
-
-        # Remove the empty web_static directory
-        run("rm -rf {}/web_static".format(release_path))
-
-        # Delete the existing symbolic link
-        run("rm -rf /data/web_static/current")
-
-        # Create a new symbolic link to the deployed version
-        run("ln -s {} /data/web_static/current".format(release_path))
-
-        return True
-    except Exception as e:
+    if put(archive_path, "/tmp/{}".format(file)).failed is True:
         return False
-
-if __name__ == "__main__":
-    archive_path = do_pack()
-    if archive_path:
-        result = do_deploy(archive_path)
-        print("New version deployed!" if result else "Deployment failed.")
+    if run("rm -rf /data/web_static/releases/{}/".
+           format(name)).failed is True:
+        return False
+    if run("mkdir -p /data/web_static/releases/{}/".
+           format(name)).failed is True:
+        return False
+    if run("tar -xzf /tmp/{} -C /data/web_static/releases/{}/".
+           format(file, name)).failed is True:
+        return False
+    if run("rm /tmp/{}".format(file)).failed is True:
+        return False
+    if run("mv /data/web_static/releases/{}/web_static/* "
+           "/data/web_static/releases/{}/".format(name, name)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/releases/{}/web_static".
+           format(name)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/current").failed is True:
+        return False
+    if run("ln -s /data/web_static/releases/{}/ /data/web_static/current".
+           format(name)).failed is True:
+        return False
+    return True
