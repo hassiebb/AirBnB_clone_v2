@@ -1,22 +1,32 @@
 #!/usr/bin/python3
+""" Based on '1-pack_web_static.py'. It distributes an archive to my web
+    servers using the function 'do_deploy'.
 """
-Fabric script that generates a tgz archive from the contents of the web_static
-folder of the AirBnB Clone repo
-"""
-
-from datetime import datetime
-from fabric.api import local
-from os.path import isdir
+from fabric.api import env, put, run, sudo
+from os.path import exists
+env.hosts = ['54.210.88.216', '100.25.104.112']
+env.user = 'ubuntu'
 
 
-def do_pack():
-    """generates a tgz archive"""
+def do_deploy(file_path):
+    """ It distributes an archive to my web servers."""
+    if not exists(file_path):
+        print('file doesnt exist')
+        return False
     try:
-        date = datetime.now().strftime("%Y%m%d%H%M%S")
-        if isdir("versions") is False:
-            local("mkdir versions")
-        file_name = "versions/web_static_{}.tgz".format(date)
-        local("tar -cvzf {} web_static".format(file_name))
-        return file_name
-    except:
-        return None
+        filename = file_path.split('/')[-1]
+        file = filename.split('.')[0]
+        put(file_path, '/tmp/')
+        sudo('mkdir -p /data/web_static/releases/{}'.format(file))
+        sudo('tar -xzf /tmp/{} -C /data/web_static/releases/{}/'
+             .format(filename, file))
+        run('rm -f /tmp/{}'.format(filename))
+        run('rm -f /data/web_static/current')
+        run("ln -sf /data/web_static/releases/{}/web_static/ \
+                /data/web_static/current".format(file))
+
+        return True
+    except Exception as e:
+        print(e)
+        return False
+    
